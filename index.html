@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hermes Control</title>
+<style>
+:root{color-scheme:dark;--bg:#08090b;--panel:#111318;--line:#242832;--text:#f4f6fa;--muted:#8e96a5;--accent:#f4b942;--ok:#58d68d;--bad:#ff6b6b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0,#1b1a14 0,transparent 35%),var(--bg);color:var(--text);font:15px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif}
+.shell{min-height:100dvh;max-width:980px;margin:auto;padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px}
+.brand{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;border:1px solid #3d3521;border-radius:13px;display:grid;place-items:center;background:#18150f;font-size:23px}
+h1{font-size:20px;margin:0}.sub{font-size:12px;color:var(--muted)}
+.status{display:flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid var(--line);border-radius:999px;background:#0e1014;color:var(--muted);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:#666}.dot.ok{background:var(--ok);box-shadow:0 0 12px #58d68d80}.dot.bad{background:var(--bad)}
+.card{background:#0e1014cc;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 24px 80px #0008}
+.auth{padding:16px;border-bottom:1px solid var(--line);display:flex;gap:10px}.auth.hidden{display:none}
+input,textarea,button{font:inherit}input{flex:1;background:#090b0e;border:1px solid var(--line);color:var(--text);border-radius:12px;padding:12px 13px;outline:none}input:focus,textarea:focus{border-color:#6e5a2e}
+button{border:0;border-radius:12px;padding:11px 14px;font-weight:650;cursor:pointer;background:var(--accent);color:#171107}button.secondary{background:#171a20;color:#cbd1dc;border:1px solid var(--line)}
+.chat{height:calc(100dvh - 235px);min-height:420px;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:13px}
+.empty{margin:auto;text-align:center;max-width:390px;color:var(--muted)}.empty strong{display:block;color:var(--text);font-size:20px;margin-bottom:6px}
+.msg{max-width:85%;padding:11px 13px;border-radius:15px;white-space:pre-wrap;word-break:break-word}.user{align-self:flex-end;background:#f4b942;color:#18120a;border-bottom-right-radius:5px}.assistant{align-self:flex-start;background:#171a20;border:1px solid #292e39;border-bottom-left-radius:5px}.thinking{color:var(--muted)}
+.composer{display:flex;gap:10px;padding:14px;border-top:1px solid var(--line);background:#0c0e12}.composer textarea{resize:none;min-height:46px;max-height:150px;flex:1;background:#090b0e;border:1px solid var(--line);color:var(--text);border-radius:13px;padding:12px 13px;outline:none}.composer button{align-self:flex-end}
+.toolbar{padding:0 14px 12px;display:flex;justify-content:flex-end;background:#0c0e12}.toolbar button{font-size:12px;padding:7px 10px}
+@media(max-width:620px){.shell{padding:10px 10px calc(10px + env(safe-area-inset-bottom))}.chat{height:calc(100dvh - 215px);padding:13px}.msg{max-width:92%}.top{margin:4px 4px 12px}.sub{display:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="top">
+    <div class="brand"><div class="logo">☤</div><div><h1>Hermes Control</h1><div class="sub">Vercel frontend · Railway runtime · Backblaze persistence</div></div></div>
+    <div class="status"><span id="dot" class="dot"></span><span id="status">zamčeno</span></div>
+  </div>
+  <div class="card">
+    <div id="auth" class="auth"><input id="password" type="password" autocomplete="current-password" placeholder="Ovládací heslo"><button id="unlock">Odemknout</button></div>
+    <div id="chat" class="chat"><div class="empty"><strong>Hermes je připraven.</strong>Odemkni ovládání a můžeš s agentem pracovat přímo odsud.</div></div>
+    <div class="composer"><textarea id="input" placeholder="Napiš Hermesovi…" disabled></textarea><button id="send" disabled>Odeslat</button></div>
+    <div class="toolbar"><button id="clear" class="secondary">Nový chat</button></div>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s), chat=$('#chat'), input=$('#input'), send=$('#send'), status=$('#status'), dot=$('#dot');
+let password=sessionStorage.getItem('hermes-control-password')||'', messages=[];
+function setState(ok,label){status.textContent=label;dot.className='dot '+(ok?'ok':'bad')}
+function render(){chat.innerHTML='';if(!messages.length){chat.innerHTML='<div class="empty"><strong>Nový chat</strong>Napiš, co má Hermes udělat.</div>';return}for(const m of messages){const d=document.createElement('div');d.className='msg '+m.role;d.textContent=m.content;chat.appendChild(d)}chat.scrollTop=chat.scrollHeight}
+async function health(){
+ if(!password)return false;
+ const r=await fetch('/api/health',{headers:{'x-hermes-control-password':password}});
+ if(r.status===401){setState(false,'špatné heslo');return false}
+ if(!r.ok){setState(false,'Railway offline');return false}
+ const x=await r.json();setState(!!x.ok,x.ok?'Hermes online':'Railway offline');return !!x.ok
+}
+async function unlock(){
+ password=$('#password').value||password;if(!password)return;
+ if(await health()){sessionStorage.setItem('hermes-control-password',password);$('#auth').classList.add('hidden');input.disabled=false;send.disabled=false;input.focus()}
+}
+async function submit(){
+ const text=input.value.trim();if(!text||send.disabled)return;
+ input.value='';messages.push({role:'user',content:text});render();send.disabled=true;input.disabled=true;
+ const wait=document.createElement('div');wait.className='msg assistant thinking';wait.textContent='Hermes pracuje…';chat.appendChild(wait);chat.scrollTop=chat.scrollHeight;
+ try{
+   const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json','x-hermes-control-password':password},body:JSON.stringify({messages})});
+   const x=await r.json();
+   wait.remove();
+   if(r.status===401){setState(false,'zamčeno');sessionStorage.removeItem('hermes-control-password');$('#auth').classList.remove('hidden');return}
+   if(!r.ok)throw new Error(x.error||'Chyba');
+   messages.push({role:'assistant',content:x.content||'(bez textové odpovědi)'});render();setState(true,'Hermes online');
+ }catch(e){wait.textContent='Chyba spojení: '+e.message;wait.classList.remove('thinking');setState(false,'chyba spojení')}
+ finally{send.disabled=false;input.disabled=false;input.focus()}
+}
+$('#unlock').onclick=unlock;send.onclick=submit;$('#clear').onclick=()=>{messages=[];render();input.focus()};
+input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();submit()}});
+$('#password').addEventListener('keydown',e=>{if(e.key==='Enter')unlock()});
+if(password){health().then(ok=>{if(ok){$('#auth').classList.add('hidden');input.disabled=false;send.disabled=false;render()}})}
+</script>
+</body></html>
